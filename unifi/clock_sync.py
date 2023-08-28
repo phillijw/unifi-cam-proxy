@@ -7,7 +7,7 @@ import sys
 import time
 
 from flvlib3.astypes import FLVObject
-from flvlib3.primitives import make_ui8, make_ui32
+from flvlib3.primitives import make_ui8, make_ui32, make_si32_extended
 from flvlib3.tags import create_script_tag
 
 
@@ -32,7 +32,7 @@ def write_log(data):
     sys.stderr.buffer.write(f"{data}\n".encode())
 
 
-def write_timestamp_trailer(is_packet, ts):
+def write_timestamp_trailer(is_packet, ts_ms):
     # Write 15 byte trailer
     write(make_ui8(0))
     if is_packet:
@@ -40,7 +40,9 @@ def write_timestamp_trailer(is_packet, ts):
     else:
         write(bytes([0, 43, 17, 0, 0, 0, 0, 0, 0, 0, 0]))
 
-    write(make_ui32(int(ts * 1000 * 100)))
+    write_log(f'ts_ms: {int(ts_ms)}; is_packet={is_packet}')
+    # write(make_ui32(int(ts_ms)))
+    write(make_si32_extended(int(ts_ms)))
 
 
 def main(args):
@@ -63,8 +65,8 @@ def main(args):
     # Tag 0 previous size
     write(read_bytes(source, 4))
 
-    last_ts = time.time()
-    start = time.time()
+    start_ms = time.time_ns() / 1000000
+    last_ts_ms = start_ms
     i = 0
     while True:
         # Packet structure from Wikipedia:
@@ -92,23 +94,33 @@ def main(args):
         payload_size = (high << 16) + low
 
         # Get timestamp to inject into clock sync tag
-        low_high = header[4:8]
-        combined = bytes([low_high[3]]) + low_high[:3]
+        ts_low_high = header[4:8]
+        ts_lower = ts_low_high[:3]
+        ts_higher = ts_low_high[3] #extension. Only used if >0
+
+        if ts_higher == 0:                                                                  
+            combined = bytes([0]) + ts_lower
+        else:                                                                               
+            combined = ts_lower + ts_higher
+
         timestamp = struct.unpack(">i", combined)[0]
 
-        now = time.time()
-        if not last_ts or now - last_ts >= 5:
-            last_ts = now
+        now_ms = time.time_ns() / 1000000
+        # write_log(f'({int(now_ms)}ms) timestamp: {timestamp}')
+
+        if not last_ts_ms or now_ms - last_ts_ms >= 5000:
+            last_ts_ms = now_ms
             # Insert a custom packet every so often for time synchronization
             data = FLVObject()
             data["streamClock"] = int(timestamp)
             data["streamClockBase"] = 0
-            data["wallClock"] = now * 1000
+            data["wallClock"] = now_ms
             packet_to_inject = create_script_tag("onClockSync", data, timestamp)
+            write_log(f'data: {packet_to_inject}')
             write(packet_to_inject)
 
             # Write 15 byte trailer
-            write_timestamp_trailer(False, now - start)
+            write_timestamp_trailer(False, now_ms - start_ms)
 
             # Write mpma tag
             # {'cs': {'cur': 1500000.0,
@@ -145,7 +157,7 @@ def main(args):
             write(packet_to_inject)
 
             # Write 15 byte trailer
-            write_timestamp_trailer(False, now - start)
+            write_timestamp_trailer(False, now_ms - start_ms)
 
             # Write rest of original packet minus previous packet size
             write(header)
@@ -159,7 +171,7 @@ def main(args):
         write(read_bytes(source, 3))
 
         # Write 15 byte trailer
-        write_timestamp_trailer(packet_type == 9, now - start)
+        write_timestamp_trailer(packet_type == 9, now_ms - start_ms)
 
         # Write mpma tag
         i += 1
