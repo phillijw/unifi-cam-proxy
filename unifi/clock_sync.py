@@ -40,7 +40,7 @@ def write_timestamp_trailer(is_packet, ts_ms):
     else:
         write(bytes([0, 43, 17, 0, 0, 0, 0, 0, 0, 0, 0]))
 
-    write_log(f'ts_ms: {int(ts_ms)}; is_packet={is_packet}')
+    # write_log(f'ts_ms: {int(ts_ms)}; is_packet={is_packet}')
     # write(make_ui32(int(ts_ms)))
     write(make_si32_extended(int(ts_ms)))
 
@@ -98,9 +98,9 @@ def main(args):
         ts_lower = ts_low_high[:3]
         ts_higher = ts_low_high[3] #extension. Only used if >0
 
-        if ts_higher == 0:                                                                  
-            combined = bytes([0]) + ts_lower
-        else:                                                                               
+        if ts_higher == 0:
+            combined =  b'\x00' + ts_lower
+        else:
             combined = ts_lower + ts_higher
 
         timestamp = struct.unpack(">i", combined)[0]
@@ -116,7 +116,8 @@ def main(args):
             data["streamClockBase"] = 0
             data["wallClock"] = now_ms
             packet_to_inject = create_script_tag("onClockSync", data, timestamp)
-            write_log(f'data: {packet_to_inject}')
+            write_log(f'now-start: {now_ms}-{start_ms} = {now_ms - start_ms}')
+            write_log(f'data: {data}')
             write(packet_to_inject)
 
             # Write 15 byte trailer
@@ -159,13 +160,28 @@ def main(args):
             # Write 15 byte trailer
             write_timestamp_trailer(False, now_ms - start_ms)
 
-            # Write rest of original packet minus previous packet size
-            write(header)
-            write(read_bytes(source, payload_size))
-        else:
-            # Write the original packet
-            write(header)
-            write(read_bytes(source, payload_size))
+        payload = read_bytes(source, payload_size)
+
+        # The first packet encountered is usually a metadata packet which contains information such as:
+        #     "duration" - 64-bit IEEE floating point value in seconds
+        #     "width" and "height" – 64-bit IEEE floating point value in pixels
+        #     "framerate" – 64-bit IEEE floating point value in frames per second
+        #     "keyframes" – an array with the positions of p-frames, needed when random access is sought.
+        #     "|AdditionalHeader" - an array of required stream decoding informational pairs
+        #         "Encryption" - an array of required encryption informational pairs
+        #         "Metadata" - Base64 encoded string of a signed X.509 certificate containing the Adobe Access AES decryption key required
+        if i == 0:
+            # write_log(f'payload: {payload}')
+            p = {}
+            p["duration"] = struct.unpack(">d", payload[28:36])[0]
+            p["width"] = struct.unpack(">d", payload[44:52])[0]
+            p["height"] = struct.unpack(">d", payload[61:69])[0]
+            p["videodatarate"] = struct.unpack(">d", payload[85:93])[0]
+            write_log(p)
+
+        # Write the original packet
+        write(header)
+        write(payload)
 
         # Write previous packet size
         write(read_bytes(source, 3))
