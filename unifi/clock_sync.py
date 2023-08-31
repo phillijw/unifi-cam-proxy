@@ -116,8 +116,8 @@ def main(args):
             data["streamClockBase"] = 0
             data["wallClock"] = now_ms
             packet_to_inject = create_script_tag("onClockSync", data, timestamp)
-            write_log(f'now-start: {now_ms}-{start_ms} = {now_ms - start_ms}')
-            write_log(f'data: {data}')
+            # write_log(f'now-start: {now_ms}-{start_ms} = {now_ms - start_ms}')
+            # write_log(f'data: {data}')
             write(packet_to_inject)
 
             # Write 15 byte trailer
@@ -161,6 +161,7 @@ def main(args):
             write_timestamp_trailer(False, now_ms - start_ms)
 
         payload = read_bytes(source, payload_size)
+        custom_payload = FLVObject()
 
         # The first packet encountered is usually a metadata packet which contains information such as:
         #     "duration" - 64-bit IEEE floating point value in seconds
@@ -177,9 +178,31 @@ def main(args):
             p["width"] = struct.unpack(">d", payload[44:52])[0]
             p["height"] = struct.unpack(">d", payload[61:69])[0]
             p["videodatarate"] = struct.unpack(">d", payload[85:93])[0]
-            write_log(p)
+            # write_log(p)
 
-        # Write the original packet
+            custom_payload["audioBandwidth"] =  struct.pack(">d", 64000.0)
+            custom_payload["audioChannels"] = struct.pack(">d", 1.0)
+            custom_payload["audioFrequency"] = struct.pack(">d", 48000.0)
+            custom_payload["channelId"] = struct.pack(">d", 0.0)
+            custom_payload["extendedFormat"] = struct.pack("?", 1)
+            custom_payload["hasAudio"] = struct.pack("?", 1)
+            custom_payload["hasVideo"] = struct.pack("?", 1)
+            custom_payload["streamId"] = struct.pack(">d", 0.0)
+            custom_payload["streamName"] = 'YtRKypErhhKFl5Ug'
+            custom_payload["videoBandwidth"] = struct.pack(">d", 10000000.0)
+            custom_payload["videoFps"] = struct.pack(">d", 18.0)
+            custom_payload["videoHeight"] = struct.pack(">d", 1920.0)
+            custom_payload["videoWidth"] = struct.pack(">d", 1080.0)
+
+            # Replace the payload with custom data
+            payload = create_script_tag('onMetaData', custom_payload, 0)
+            write_log(f'payload: {payload}')
+            f = open('output', 'wb')
+            f.write(payload)
+            f.close()
+
+
+        # Write the packet
         write(header)
         write(payload)
 
