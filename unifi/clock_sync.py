@@ -6,7 +6,7 @@ import struct
 import sys
 import time
 
-from flvlib3.astypes import FLVObject
+from flvlib3.astypes import FLVObject, make_object
 from flvlib3.primitives import make_ui8, make_ui32, make_si32_extended
 from flvlib3.tags import create_script_tag
 
@@ -41,6 +41,7 @@ def write_timestamp_trailer(is_packet, ts_ms):
         write(bytes([0, 43, 17, 0, 0, 0, 0, 0, 0, 0, 0]))
 
     # write_log(f'ts_ms: {int(ts_ms)}; is_packet={is_packet}')
+
     # write(make_ui32(int(ts_ms)))
     write(make_si32_extended(int(ts_ms)))
 
@@ -180,7 +181,7 @@ def main(args):
             p["videodatarate"] = struct.unpack(">d", payload[85:93])[0]
             # write_log(p)
 
-            custom_payload["audioBandwidth"] =  struct.pack(">d", 64000.0)
+            custom_payload["audioBandwidth"] = struct.pack(">d", 64000.0)
             custom_payload["audioChannels"] = struct.pack(">d", 1.0)
             custom_payload["audioFrequency"] = struct.pack(">d", 48000.0)
             custom_payload["channelId"] = struct.pack(">d", 0.0)
@@ -196,8 +197,9 @@ def main(args):
 
             # Replace the payload with custom data
             payload = create_script_tag('onMetaData', custom_payload, 0)
-            write_log(f'payload: {payload}')
+            write_log(f'payload: {header}{payload}')
             f = open('output', 'wb')
+            f.write(header)
             f.write(payload)
             f.close()
 
