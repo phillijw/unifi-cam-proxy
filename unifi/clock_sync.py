@@ -195,13 +195,13 @@ def main(args):
             custom_payload["videoHeight"] = struct.pack(">d", 1920.0)
             custom_payload["videoWidth"] = struct.pack(">d", 1080.0)
 
-            # Replace the payload with custom data
-            payload = create_script_tag('onMetaData', custom_payload, 0)
-            write_log(f'payload: {header}{payload}')
-            f = open('output', 'wb')
-            f.write(header)
-            f.write(payload)
-            f.close()
+            # # Replace the payload with custom data
+            # payload = create_script_tag('onMetaData', custom_payload, 0)
+            # write_log(f'payload: {header}{payload}')
+            # f = open('output', 'wb')
+            # f.write(header)
+            # f.write(payload)
+            # f.close()
 
 
         # Write the packet
