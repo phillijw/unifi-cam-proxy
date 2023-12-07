@@ -35,8 +35,12 @@ def write_log(data):
 def millis():
     return time.time_ns() // 1000000
 
-def write_timestamp_trailer(ts_ms):
-    write(bytes([0, 1, 95, 144, 0, 0, 0, 0, 0, 0, 0, 0]))
+def write_timestamp_trailer(tag_type, ts_ms):
+    if tag_type == 8:
+        write(bytes([0, 0, 187, 128, 0, 0, 0, 0, 0, 0, 0, 0]))
+    else:
+        write(bytes([0, 1, 95, 144, 0, 0, 0, 0, 0, 0, 0, 0]))
+
     write(struct.pack(">I", ts_ms))
 
 def inject_clock_sync(timestamp, stream_clock_base, now_ms):
@@ -67,7 +71,7 @@ def inject_on_metadata(streamName, height, width):
         'audioFrequency': 48000,
         'channelId': width_map.get(width, 0),
         'extendedFormat': True,
-        'hasAudio': False,
+        'hasAudio': True,
         'hasVideo': True,
         'streamId': width_map.get(width, 0),
         'streamName': streamName,
@@ -122,7 +126,8 @@ def main(args):
     write(read_bytes(source, 4))
 
     start_ms = millis()
-    correction_ms = -20000
+    correction_video_ms = -20000
+    correction_audio_ms = -20000
     stream_clock_base = 0
     last_ts_ms = 0
     have_metadata = 0
@@ -162,18 +167,24 @@ def main(args):
             write(payload)
             write(read_bytes(source, 4))
 
-        write_timestamp_trailer(now_ms - start_ms)
+        write_timestamp_trailer(tag_type, now_ms - start_ms)
 
         if have_metadata:        
             if not last_ts_ms or now_ms - last_ts_ms >= 5000:
                 last_ts_ms = now_ms
                 inject_on_mpma(timestamp)
-                write_timestamp_trailer(now_ms - start_ms)
-            if abs(now_ms - start_ms - timestamp + correction_ms) > 200:
-                correction_ms = (now_ms - start_ms - timestamp) * -1
-                write_log(f"sending onClockSync, drift correction: {correction_ms}")
+                write_timestamp_trailer(18, now_ms - start_ms)
+            if tag_type == 9 and abs(now_ms - start_ms - timestamp + correction_video_ms) > 200:
+                correction_video_ms = (now_ms - start_ms - timestamp) * -1
+                write_log(f"sending onClockSync, video drift correction: {correction_video_ms}")
                 inject_clock_sync(timestamp, stream_clock_base, now_ms)
-                write_timestamp_trailer(now_ms - start_ms)
+                write_timestamp_trailer(18, now_ms - start_ms)
+            if tag_type == 8 and abs(now_ms - start_ms - timestamp + correction_audio_ms) > 200:
+                correction_audio_ms = (now_ms - start_ms - timestamp) * -1
+                write_log(f"sending onClockSync, audio drift correction: {correction_audio_ms}")
+                inject_clock_sync(timestamp, stream_clock_base, now_ms)
+                write_timestamp_trailer(18, now_ms - start_ms)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Modify Protect FLV stream")
